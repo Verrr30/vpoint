@@ -1,0 +1,62 @@
+vpoint/
+│
+├── admin/
+│   ├── accounts/
+│   │   ├── add.php
+│   │   ├── edit.php
+│   │   ├── delete.php
+│   │   ├── index.php
+│   │   └── view.php
+│   ├── transactions/
+│   │   ├── index.php
+│   │   ├── view.php
+│   │   └── update-status.php
+│   ├── dashboard.php
+│   └── index.php
+│
+├── assets/
+│   ├── css/
+│   │   ├── admin.css
+│   │   ├── style.css
+│   │   └── user.css
+│   ├── js/
+│   │   ├── main.js
+│   │   ├── admin.js
+│   │   └── validation.js
+│   └── images/
+│       ├── accounts/
+│       ├── payment-proof/
+│       └── profile/
+│
+├── config/
+│   ├── database.php
+│   └── config.php
+│
+├── includes/
+│   ├── header.php
+│   ├── footer.php
+│   ├── admin-header.php
+│   ├── admin-footer.php
+│   ├── auth.php
+│   └── functions.php
+│
+├── user/
+│   ├── dashboard.php
+│   ├── profile/
+│   │   ├── edit.php
+│   │   └── index.php
+│   ├── transactions/
+│   │   ├── checkout.php
+│   │   ├── history.php
+│   │   └── view.php
+│   └── wishlist.php
+│
+├── vendor/
+│
+├── .gitignore
+├── composer.json
+├── index.php
+├── login.php
+├── logout.php
+├── register.php
+└── README.md
