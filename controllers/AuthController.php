@@ -1,97 +1,74 @@
 <?php
 
 class AuthController {
-    private $db;
-    private $users;
+    private $database;
 
     public function __construct($database) {
-        $this->db = $database;
-        $this->users = $this->db->users;
-    }
-
-    public function login($username, $password) {
-        try {
-            $user = $this->users->findOne(['username' => $username]);
-            
-            if ($user && password_verify($password, $user->password)) {
-                $_SESSION['user_id'] = (string)$user->_id;
-                $_SESSION['username'] = $user->username;
-                $_SESSION['role'] = $user->role;
-                
-                return [
-                    'success' => true,
-                    'message' => 'Login berhasil'
-                ];
-            }
-            
-            return [
-                'success' => false,
-                'message' => 'Username atau password salah'
-            ];
-        } catch (Exception $e) {
-            return [
-                'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
-            ];
-        }
+        $this->database = $database;
     }
 
     public function register($data) {
         try {
-            // Validasi input
-            if (empty($data['username']) || empty($data['password']) || empty($data['email'])) {
+            // Validasi data
+            $errors = $this->validateRegistration($data);
+            if (!empty($errors)) {
                 return [
                     'success' => false,
-                    'message' => 'Semua field harus diisi'
+                    'message' => implode(', ', $errors)
                 ];
             }
-
-            // Cek username sudah ada atau belum
-            $existingUser = $this->users->findOne(['username' => $data['username']]);
+    
+            // Cek username dan email sudah ada atau belum
+            $existingUser = $this->database->users->findOne([
+                '$or' => [
+                    ['username' => $data['username']],
+                    ['email' => $data['email']]
+                ]
+            ]);
+    
             if ($existingUser) {
-                return [
-                    'success' => false,
-                    'message' => 'Username sudah digunakan'
-                ];
+                if ($existingUser->username === $data['username']) {
+                    return [
+                        'success' => false,
+                        'message' => 'Username sudah digunakan'
+                    ];
+                }
+                if ($existingUser->email === $data['email']) {
+                    return [
+                        'success' => false,
+                        'message' => 'Email sudah terdaftar'
+                    ];
+                }
             }
-
-            // Cek email sudah ada atau belum
-            $existingEmail = $this->users->findOne(['email' => $data['email']]);
-            if ($existingEmail) {
-                return [
-                    'success' => false,
-                    'message' => 'Email sudah digunakan'
-                ];
-            }
-
+    
             // Hash password
             $hashedPassword = password_hash($data['password'], PASSWORD_DEFAULT);
-
-            // Siapkan data user
+    
+            // Siapkan data user sesuai schema
             $user = [
                 'username' => $data['username'],
-                'password' => $hashedPassword,
                 'email' => $data['email'],
-                'role' => 'user',
+                'password' => $hashedPassword,
+                'role' => $data['role'],
                 'created_at' => new MongoDB\BSON\UTCDateTime(),
-                'updated_at' => new MongoDB\BSON\UTCDateTime()
+                'status' => true // default active
             ];
-
+    
             // Insert ke database
-            $result = $this->users->insertOne($user);
-
+            $result = $this->database->users->insertOne($user);
+    
             if ($result->getInsertedCount() > 0) {
                 return [
                     'success' => true,
-                    'message' => 'Registrasi berhasil'
+                    'message' => 'User berhasil ditambahkan'
                 ];
             } else {
                 return [
                     'success' => false,
-                    'message' => 'Gagal melakukan registrasi'
+                    'message' => 'Gagal menambahkan user'
                 ];
             }
-
+    
         } catch (Exception $e) {
             return [
                 'success' => false,
@@ -99,114 +76,36 @@ class AuthController {
             ];
         }
     }
-
-    public function logout() {
-        session_destroy();
-        return [
-            'success' => true,
-            'message' => 'Logout berhasil'
-        ];
-    }
-
-    public function getCurrentUser() {
-        if (!isset($_SESSION['user_id'])) {
-            return null;
+    
+    private function validateRegistration($data) {
+        $errors = [];
+    
+        // Validasi username
+        if (empty($data['username'])) {
+            $errors[] = 'Username wajib diisi';
+        } elseif (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $data['username'])) {
+            $errors[] = 'Username hanya boleh mengandung huruf, angka, dan underscore (3-20 karakter)';
         }
-
-        try {
-            return $this->users->findOne([
-                '_id' => new MongoDB\BSON\ObjectId($_SESSION['user_id'])
-            ]);
-        } catch (Exception $e) {
-            return null;
+    
+        // Validasi email
+        if (empty($data['email'])) {
+            $errors[] = 'Email wajib diisi';
+        } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Format email tidak valid';
         }
-    }
-
-    public function updateUser($userId, $data) {
-        try {
-            $updateData = [
-                'updated_at' => new MongoDB\BSON\UTCDateTime()
-            ];
-
-            if (!empty($data['email'])) {
-                // Cek email sudah digunakan user lain atau belum
-                $existingEmail = $this->users->findOne([
-                    'email' => $data['email'],
-                    '_id' => ['$ne' => new MongoDB\BSON\ObjectId($userId)]
-                ]);
-                
-                if ($existingEmail) {
-                    return [
-                        'success' => false,
-                        'message' => 'Email sudah digunakan'
-                    ];
-                }
-                
-                $updateData['email'] = $data['email'];
-            }
-
-            if (!empty($data['password'])) {
-                $updateData['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
-            }
-
-            $result = $this->users->updateOne(
-                ['_id' => new MongoDB\BSON\ObjectId($userId)],
-                ['$set' => $updateData]
-            );
-
-            if ($result->getModifiedCount() > 0) {
-                return [
-                    'success' => true,
-                    'message' => 'Data user berhasil diperbarui'
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => 'Tidak ada perubahan data'
-                ];
-            }
-
-        } catch (Exception $e) {
-            return [
-                'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
-            ];
+    
+        // Validasi password
+        if (empty($data['password'])) {
+            $errors[] = 'Password wajib diisi';
+        } elseif (strlen($data['password']) < 6) {
+            $errors[] = 'Password minimal 6 karakter';
         }
-    }
-
-    public function getAllUsers() {
-        try {
-            $users = $this->users->find([], [
-                'sort' => ['created_at' => -1]
-            ]);
-            return iterator_to_array($users);
-        } catch (Exception $e) {
-            return [];
+    
+        // Validasi role
+        if (empty($data['role']) || !in_array($data['role'], ['user', 'admin'])) {
+            $errors[] = 'Role tidak valid';
         }
-    }
-
-    public function deleteUser($userId) {
-        try {
-            $result = $this->users->deleteOne([
-                '_id' => new MongoDB\BSON\ObjectId($userId)
-            ]);
-
-            if ($result->getDeletedCount() > 0) {
-                return [
-                    'success' => true,
-                    'message' => 'User berhasil dihapus'
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => 'User tidak ditemukan'
-                ];
-            }
-        } catch (Exception $e) {
-            return [
-                'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
-            ];
-        }
+    
+        return $errors;
     }
 }
