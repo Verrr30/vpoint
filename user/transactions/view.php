@@ -12,32 +12,37 @@ if (!isset($_SESSION['user_id'])) {
 $transaction_id = isset($_GET['id']) ? $_GET['id'] : null;
 
 if (!$transaction_id) {
-    header('Location: /vpoint/user/dashboard.php');
+    header('Location: /vpoint/user/orders.php');
     exit();
 }
 
 try {
-    // Get transaction details
+    // Get transaction details with account information
     $transaction = $database->transactions->findOne([
         '_id' => new MongoDB\BSON\ObjectId($transaction_id),
         'user_id' => new MongoDB\BSON\ObjectId($_SESSION['user_id'])
     ]);
 
     if (!$transaction) {
-        $_SESSION['error'] = "Transaction not found.";
-        header('Location: /vpoint/user/dashboard.php');
+        $_SESSION['error'] = "Transaksi tidak ditemukan.";
+        header('Location: /vpoint/user/orders.php');
         exit();
     }
 
+    // Get account details
+    $account = $database->accounts->findOne([
+        '_id' => new MongoDB\BSON\ObjectId($transaction->account_id)
+    ]);
+
 } catch (Exception $e) {
-    $_SESSION['error'] = "Error fetching transaction details.";
-    header('Location: /vpoint/user/dashboard.php');
+    $_SESSION['error'] = "Error mengambil detail transaksi.";
+    header('Location: /vpoint/user/orders.php');
     exit();
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -54,7 +59,7 @@ try {
             <!-- Page Header -->
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-2xl font-semibold text-gray-900">Detail Transaksi</h1>
-                <a href="/vpoint/user/dashboard.php" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                <a href="/vpoint/user/orders.php" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                     <i class="fas fa-arrow-left mr-2"></i>
                     Kembali
                 </a>
@@ -73,15 +78,34 @@ try {
                         </div>
                     </div>
 
-                    <!-- Amount -->
-                    <div class="flex items-center py-4 border-b border-gray-200">
+                    <!-- Account Details -->
+                    <div class="flex items-start py-4 border-b border-gray-200">
                         <div class="w-1/3">
-                            <span class="text-sm font-medium text-gray-500">Jumlah V-Point</span>
+                            <span class="text-sm font-medium text-gray-500">Detail Akun</span>
                         </div>
                         <div class="w-2/3">
-                            <span class="text-sm font-semibold text-gray-900">
-                                <?php echo number_format($transaction->amount); ?> VP
-                            </span>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <div class="flex items-center mb-4">
+                                    <?php if (isset($account->images->main_image)): ?>
+                                        <img src="/vpoint/uploads/accounts/<?php echo $account->_id; ?>/<?php echo $account->images->main_image; ?>" 
+                                             alt="<?php echo htmlspecialchars($account->account_name); ?>"
+                                             class="w-20 h-20 object-cover rounded-lg">
+                                    <?php else: ?>
+                                        <div class="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-image text-gray-400 text-2xl"></i>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="ml-4">
+                                        <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($account->account_name); ?></h3>
+                                        <p class="text-sm text-gray-500">Server ID: <?php echo htmlspecialchars($account->server_id); ?></p>
+                                        <p class="text-sm text-gray-500">Level: <?php echo $account->level; ?></p>
+                                        <p class="text-sm text-gray-500">Rank: <?php echo htmlspecialchars($account->rank); ?></p>
+                                    </div>
+                                </div>
+                                <div class="text-lg font-semibold text-blue-600">
+                                    Rp <?php echo number_format($account->price, 0, ',', '.'); ?>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -94,14 +118,21 @@ try {
                             <?php
                             $statusColors = [
                                 'pending' => 'bg-yellow-100 text-yellow-800',
-                                'approved' => 'bg-green-100 text-green-800',
-                                'rejected' => 'bg-red-100 text-red-800'
+                                'completed' => 'bg-green-100 text-green-800',
+                                'cancelled' => 'bg-red-100 text-red-800'
                             ];
                             $status = $transaction->status ?? 'pending';
                             $statusColor = $statusColors[$status] ?? 'bg-gray-100 text-gray-800';
                             ?>
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?php echo $statusColor; ?>">
-                                <?php echo ucfirst($status); ?>
+                                <?php 
+                                $statusText = [
+                                    'pending' => 'Menunggu Pembayaran',
+                                    'completed' => 'Selesai',
+                                    'cancelled' => 'Dibatalkan'
+                                ];
+                                echo $statusText[$status] ?? ucfirst($status); 
+                                ?>
                             </span>
                         </div>
                     </div>
@@ -114,10 +145,17 @@ try {
                         <div class="w-2/3">
                             <span class="text-sm text-gray-900">
                                 <?php 
-                                $date = $transaction->created_at instanceof MongoDB\BSON\UTCDateTime 
-                                    ? $transaction->created_at->toDateTime() 
-                                    : new DateTime();
-                                echo $date->format('d F Y, H:i'); 
+                                if (isset($transaction->created_at)) {
+                                    if ($transaction->created_at instanceof MongoDB\BSON\UTCDateTime) {
+                                        $date = $transaction->created_at->toDateTime();
+                                        $date->setTimezone(new DateTimeZone('Asia/Jakarta'));
+                                        echo $date->format('d F Y, H:i');
+                                    } else {
+                                        echo date('d F Y, H:i', strtotime($transaction->created_at));
+                                    }
+                                } else {
+                                    echo date('d F Y, H:i');
+                                }
                                 ?> WIB
                             </span>
                         </div>
@@ -125,7 +163,7 @@ try {
 
                     <!-- Payment Proof -->
                     <?php if (isset($transaction->payment_proof)): ?>
-                    <div class="flex items-start py-4">
+                    <div class="flex items-start py-4 border-b border-gray-200">
                         <div class="w-1/3">
                             <span class="text-sm font-medium text-gray-500">Bukti Pembayaran</span>
                         </div>
